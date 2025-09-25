@@ -321,7 +321,7 @@ export default function Page() {
       `결제 요청\n- 품목: ${summary.items.length}개 (${totalCount}개)\n- 총금액: ${(summary.totalAmount ?? 0).toLocaleString('ko-KR')}원\n- 이메일: ${emailTrimmed}\n- 주소: ${addr}\n- 우편번호: ${zip}`
     );
     try {
-      const res = await fetch(`/api/coffee/carts/${cartId}/email`, {
+      const res = await fetch(`/api/coffee/carts/${cartId}/date`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
         body: emailTrimmed,
