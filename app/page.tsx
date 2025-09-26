@@ -591,9 +591,6 @@ export default function Page() {
               {paying ? '처리 중…' : '결제하기'}
             </button>
 
-            <div className="mt-3 text-[11px] text-gray-500">
-              cartId: <span className="font-mono">{cartId ?? '(없음)'}</span>
-            </div>
           </aside>
         </div>
       </div>

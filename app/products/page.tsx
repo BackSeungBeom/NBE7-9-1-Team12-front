@@ -13,7 +13,7 @@ type CoffeeResponseDto = {
   name: string;
   price: number;
   contents?: string;
-  imageUrl?: string; 
+  imageUrl?: string;
   stock?: number;
 };
 
@@ -35,10 +35,10 @@ function AddProductModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSaved: () => Promise<void> | void; // 저장 후 목록 갱신
+  onSaved: () => Promise<void> | void;
 }) {
   const [name, setName] = useState('');
-  const [price, setPrice] = useState(''); // 문자열로 받아서 검증
+  const [price, setPrice] = useState('');
   const [contents, setContents] = useState('');
   const [stock, setStock] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -58,7 +58,7 @@ function AddProductModal({
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  // 모달 열릴 때마다 초기화
+  // 모달 열릴 때 초기화
   useEffect(() => {
     if (open) {
       setName('');
@@ -71,86 +71,81 @@ function AddProductModal({
     }
   }, [open]);
 
-  // AddProductModal 내부
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (submitting) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
 
-  const nameTrim = name.trim();
-  const contentsTrim = contents.trim();
-  const priceNum = Number.parseInt(price.trim(), 10);
-  const stockNum = Number.parseInt(stock.trim(), 10);
+    const nameTrim = name.trim();
+    const contentsTrim = contents.trim();
+    const priceNum = Number.parseInt(price.trim(), 10);
+    const stockNum = Number.parseInt(stock.trim(), 10);
 
-  if (!nameTrim) return setErr('상품명은 필수입니다.');
-  if (!Number.isFinite(priceNum) || priceNum < 0) return setErr('가격은 0 이상 숫자여야 합니다.');
-  if (!contentsTrim) return setErr('상품 설명은 필수입니다.');
-  if (!Number.isFinite(stockNum) || stockNum < 0) return setErr('재고는 0 이상 숫자여야 합니다.');
-  if (!file) return setErr('이미지 파일을 선택해주세요.');
+    if (!nameTrim) return setErr('상품명은 필수입니다.');
+    if (!Number.isFinite(priceNum) || priceNum < 0) return setErr('가격은 0 이상 숫자여야 합니다.');
+    if (!contentsTrim) return setErr('상품 설명은 필수입니다.');
+    if (!Number.isFinite(stockNum) || stockNum < 0) return setErr('재고는 0 이상 숫자여야 합니다.');
+    if (!file) return setErr('이미지 파일을 선택해주세요.');
 
-  setErr(null);
-  setSubmitting(true);
+    setErr(null);
+    setSubmitting(true);
 
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
 
-    // 1) 이미지 먼저 업로드 (multipart/form-data)
-    const fd = new FormData();
-    fd.append('file', file); // ← MediaController @RequestPart("file")
+      // (1) 이미지 업로드
+      const fd = new FormData();
+      fd.append('file', file);
 
-    const upRes = await fetch('/api/coffee/products/image', {
-      method: 'POST',
-      body: fd,                      // Content-Type 직접 세팅 금지!
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-    if (!upRes.ok) {
-      const t = await upRes.text();
-      console.error('image upload failed', upRes.status, t);
-      setErr('이미지 업로드에 실패했습니다.');
-      return;
+      const upRes = await fetch('/api/coffee/products/image', {
+        method: 'POST',
+        body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!upRes.ok) {
+        const t = await upRes.text();
+        console.error('image upload failed', upRes.status, t);
+        setErr('이미지 업로드에 실패했습니다.');
+        return;
+      }
+      const upJson = await upRes.json();
+      const imageUrl: string = upJson?.data?.imageUrl ?? upJson?.imageUrl;
+      if (!imageUrl) {
+        setErr('이미지 업로드 결과가 올바르지 않습니다.');
+        return;
+      }
+
+      // (2) 상품 등록
+      const addRes = await fetch('/api/coffee/products/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name: nameTrim,
+          price: priceNum,
+          contents: contentsTrim,
+          imageUrl,
+          stock: stockNum,
+        }),
+      });
+
+      if (!addRes.ok) {
+        const t = await addRes.text();
+        console.error('add product failed', addRes.status, t);
+        setErr('등록에 실패했습니다.');
+        return;
+      }
+
+      await onSaved();
+      onClose();
+    } catch (e) {
+      console.error(e);
+      setErr('요청 중 오류가 발생했습니다.');
+    } finally {
+      setSubmitting(false);
     }
-
-    const upJson = await upRes.json();
-    // RsData 또는 평문 응답 모두 지원
-    const imageUrl: string =
-      upJson?.data?.imageUrl ?? upJson?.imageUrl;
-    if (!imageUrl) {
-      setErr('이미지 업로드 결과가 올바르지 않습니다.');
-      return;
-    }
-
-    // 2) 상품 등록 (application/json)
-    const addRes = await fetch('/api/coffee/products/add', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        name: nameTrim,
-        price: priceNum,
-        contents: contentsTrim,
-        imageUrl,           // ← 업로드 결과로 받은 URL (/images/파일명)
-        stock: stockNum,
-      }),
-    });
-
-    if (!addRes.ok) {
-      const t = await addRes.text();
-      console.error('add product failed', addRes.status, t);
-      setErr('등록에 실패했습니다.');
-      return;
-    }
-
-    await onSaved(); // 목록 갱신
-    onClose();
-  } catch (e) {
-    console.error(e);
-    setErr('요청 중 오류가 발생했습니다.');
-  } finally {
-    setSubmitting(false);
-  }
-};
-
+  };
 
   if (!open) return null;
 
@@ -177,7 +172,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         </div>
 
         <form onSubmit={handleSubmit} className="grid grid-cols-5 gap-4">
-          {/* 이미지 미리보기 */}
+          {/* 미리보기 */}
           <div className="col-span-2">
             <div className="aspect-square w-full rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
               {previewUrl ? (
@@ -188,12 +183,12 @@ const handleSubmit = async (e: React.FormEvent) => {
               )}
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              업로드한 이미지는 <code>src/main/resources/static/images</code>에 저장되고,
-              <code>/images/파일명</code> URL로 제공됩니다.
+              업로드한 이미지는 <code>src/main/resources/static/images</code>에 저장되고{' '}
+              <code>/images/파일명</code>으로 제공됩니다.
             </p>
           </div>
 
-          {/* 폼 필드 */}
+          {/* 폼 */}
           <div className="col-span-3 space-y-3">
             <div>
               <label className="block text-sm mb-1">상품명</label>
@@ -231,63 +226,60 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div>
-  <label className="block text-sm mb-1">이미지 파일</label>
+              <label className="block text-sm mb-1">이미지 파일</label>
 
-  <div className="flex items-center gap-2">
-    {/* 실제 파일 입력은 숨기고 */}
-    <input
-      id="add-image"
-      type="file"
-      accept="image/*"
-      className="sr-only"
-      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-      required
-    />
+              <div className="flex items-center gap-2">
+                {/* 실제 파일 입력은 숨김 */}
+                <input
+                  id="add-image"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  required
+                />
 
-    {/* 사용자가 보는 ‘파일 추가’ 링크 스타일 버튼 */}
-    <label
-      htmlFor="add-image"
-      className="inline-flex items-center gap-1 text-blue-600 hover:underline cursor-pointer select-none
-                 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded-sm"
-      title="이미지 선택"
-    >
-      {/* 업로드 아이콘 (SVG) */}
-      <svg
-        className="w-4 h-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="17 8 12 3 7 8" />
-        <line x1="12" y1="3" x2="12" y2="15" />
-      </svg>
-      파일 추가
-    </label>
+                {/* 링크 스타일 버튼 */}
+                <label
+                  htmlFor="add-image"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline cursor-pointer select-none
+                             focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded-sm"
+                  title="이미지 선택"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  파일 추가
+                </label>
 
-    {/* 선택된 파일명 & 지우기 */}
-    {file && (
-      <>
-        <span className="text-xs text-gray-600">{file.name}</span>
-        <button
-          type="button"
-          onClick={() => setFile(null)}
-          className="text-xs text-gray-500 hover:underline"
-        >
-          지우기
-        </button>
-      </>
-    )}
-  </div>
+                {/* 선택된 파일 표시/지우기 */}
+                {file && (
+                  <>
+                    <span className="text-xs text-gray-600">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFile(null)}
+                      className="text-xs text-gray-500 hover:underline"
+                    >
+                      지우기
+                    </button>
+                  </>
+                )}
+              </div>
 
-  <p className="mt-1 text-[11px] text-gray-500">
-    JPG/PNG 등 이미지 파일을 업로드하세요.
-  </p>
-</div>
+              <p className="mt-1 text-[11px] text-gray-500">JPG/PNG 등 이미지 파일을 업로드하세요.</p>
+            </div>
 
             <div>
               <label className="block text-sm mb-1">설명</label>
@@ -339,6 +331,12 @@ export default function AdminProductsPage() {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [addOpen, setAddOpen] = useState(false);
+  const [delId, setDelId] = useState<number | null>(null);
+
+  // 재고 인라인 수정 상태
+  const [editingStockId, setEditingStockId] = useState<number | null>(null);
+  const [tempStock, setTempStock] = useState('');
+  const [savingStockId, setSavingStockId] = useState<number | null>(null);
 
   /** 상품 목록 불러오기 */
   const fetchProducts = async () => {
@@ -384,6 +382,79 @@ export default function AdminProductsPage() {
     fetchProducts();
   }, []);
 
+  /** 삭제 */
+  const handleDelete = async (coffeeId: number, name: string) => {
+    if (delId !== null) return;
+    const ok = window.confirm(`정말로 "${name}"(을)를 삭제하시겠어요?`);
+    if (!ok) return;
+
+    setDelId(coffeeId);
+    setErr(null);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
+      const res = await fetch(`/api/coffee/products/${coffeeId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error('delete failed', res.status, t);
+        setErr('삭제에 실패했습니다.');
+        return;
+      }
+      await fetchProducts();
+    } catch (e) {
+      console.error(e);
+      setErr('삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDelId(null);
+    }
+  };
+
+  /** 재고 인라인 수정 핸들러 */
+  const startEditStock = (id: number, current?: number) => {
+    setEditingStockId(id);
+    setTempStock(String(current ?? 0));
+  };
+
+  const saveStock = async (id: number) => {
+    const val = Number.parseInt(tempStock.trim(), 10);
+    if (!Number.isFinite(val) || val < 0) {
+      alert('재고는 0 이상 숫자여야 합니다.');
+      return;
+    }
+    setSavingStockId(id);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
+      const res = await fetch(`/api/coffee/products/${id}/stock`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ stock: val }),
+      });
+      if (!res.ok) {
+        console.error('update stock failed', res.status, await res.text());
+        alert('재고 수정에 실패했습니다.');
+        return;
+      }
+      // 낙관적 업데이트
+      setList((prev) => prev.map((it) => (it.coffeeId === id ? { ...it, stock: val } : it)));
+      setEditingStockId(null);
+    } catch (e) {
+      console.error(e);
+      alert('네트워크 오류가 발생했습니다.');
+    } finally {
+      setSavingStockId(null);
+    }
+  };
+
+  const cancelEditStock = () => {
+    setEditingStockId(null);
+    setTempStock('');
+  };
+
   /** 검색 필터 */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -395,13 +466,11 @@ export default function AdminProductsPage() {
     );
   }, [list, query]);
 
-  /** 로그아웃 */
   const logout = () => {
     localStorage.removeItem('adminToken');
     router.replace('/admin/login');
   };
 
-  /** 펼침 제어 */
   const toggleOne = (id: number) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   const expandAll = () =>
@@ -485,14 +554,14 @@ export default function AdminProductsPage() {
                   <th className="px-4 py-3 text-left">상품명</th>
                   <th className="px-4 py-3 text-right">가격</th>
                   <th className="px-4 py-3 text-center">재고</th>
-                  <th className="px-4 py-3 text-left">내용(요약)</th>
+                  <th className="px-4 py-3 text-center w-28">관리</th>
                 </tr>
               </thead>
 
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                       등록된 상품이 없습니다.
                     </td>
                   </tr>
@@ -533,18 +602,63 @@ export default function AdminProductsPage() {
                           </td>
                           <td className="px-4 py-3">{p.name}</td>
                           <td className="px-4 py-3 text-right">{formatKRW(p.price)}</td>
-                          <td className="px-4 py-3 text-center">{p.stock}</td>
-                          <td className="px-4 py-3">
-                            <div className="line-clamp-1 text-gray-600">
-                              {p.contents || '—'}
-                            </div>
+
+                          {/* 재고 셀 (수정/저장 토글) */}
+                          <td className="px-4 py-3 text-center">
+                            {editingStockId === p.coffeeId ? (
+                              <div className="inline-flex items-center gap-2">
+                                <input
+                                  value={tempStock}
+                                  onChange={(e) =>
+                                    setTempStock(e.target.value.replace(/[^\d]/g, ''))
+                                  }
+                                  inputMode="numeric"
+                                  className="w-16 text-center rounded border px-2 py-1 text-sm"
+                                />
+                                <button
+                                  onClick={() => saveStock(p.coffeeId)}
+                                  disabled={savingStockId === p.coffeeId}
+                                  className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
+                                >
+                                  {savingStockId === p.coffeeId ? '저장중…' : '저장'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditStock}
+                                  className="text-xs text-gray-500 hover:underline"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-2 justify-center">
+                                <span>{p.stock}</span>
+                                <button
+                                  onClick={() => startEditStock(p.coffeeId, p.stock)}
+                                  className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
+                                >
+                                  수정
+                                </button>
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleDelete(p.coffeeId, p.name)}
+                              disabled={delId === p.coffeeId}
+                              className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
+                              title="제품 삭제"
+                            >
+                              {delId === p.coffeeId ? '삭제 중…' : '삭제'}
+                            </button>
                           </td>
                         </tr>
 
                         {/* 상세영역 */}
                         {isOpen && (
                           <tr id={detailsId} className="border-t bg-gray-50/60">
-                            <td colSpan={6} className="px-6 py-4">
+                            <td colSpan={7} className="px-6 py-4">
                               <div className="grid grid-cols-5 gap-4">
                                 {/* 큰 이미지 */}
                                 <div className="col-span-2">
@@ -573,6 +687,9 @@ export default function AdminProductsPage() {
                                   <div className="mt-3 text-sm text-gray-900 font-medium">
                                     {formatKRW(p.price)}
                                   </div>
+                                  <div className="mt-1 text-xs text-gray-600">
+                                    재고: {p.stock ?? 0}개
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -587,7 +704,6 @@ export default function AdminProductsPage() {
           </div>
         )}
 
-        {/* 하단 요약 */}
         {!loading && !err && (
           <div className="mt-4 text-sm text-gray-600">
             총 <b>{filtered.length}</b>건 표시
@@ -596,11 +712,7 @@ export default function AdminProductsPage() {
       </div>
 
       {/* 추가 모달 */}
-      <AddProductModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSaved={fetchProducts}
-      />
+      <AddProductModal open={addOpen} onClose={() => setAddOpen(false)} onSaved={fetchProducts} />
     </main>
   );
 }
