@@ -1,12 +1,14 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    async rewrites() {
-      return [
-        // 프론트에서 /api/* 로 치면, 개발 서버가 8080 백엔드로 프록시해 줍니다.
-        { source: '/api/:path*', destination: 'http://localhost:8080/:path*' },
-      ];
-    },
-  };
-  
-  module.exports = nextConfig;
-  
+  async rewrites() {
+    return [
+      // 기존 API 프록시가 있다면 유지
+      { source: '/api/:path*', destination: 'http://localhost:8080/:path*' },
+
+      // 새 이미지 프록시
+      { source: '/images/:path*', destination: 'http://localhost:8080/images/:path*' },
+    ];
+  },
+};
+module.exports = nextConfig;
