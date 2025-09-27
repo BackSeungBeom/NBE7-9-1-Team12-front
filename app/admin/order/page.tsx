@@ -51,8 +51,9 @@ export default function AdminOrderPage() {
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Record<number, boolean>>({}); // orderId -> opened
+  const [dailyMode, setDailyMode] = useState(false); // ★ 금일 주문 모드
 
-  /** 주문 목록 조회 */
+  /** 주문 목록 조회(전체) */
   const fetchOrders = async () => {
     setLoading(true);
     setErr(null);
@@ -79,7 +80,6 @@ export default function AdminOrderPage() {
         return;
       }
 
-      // RsData 또는 raw 배열 모두 대응
       const json = await res.json();
       const data: OrderResponse[] = (json?.data ?? json) as OrderResponse[];
       setOrders(Array.isArray(data) ? data : []);
@@ -89,6 +89,50 @@ export default function AdminOrderPage() {
     } finally {
       setLoading(false);
     }
+  }; 
+
+  /** 금일(일일 배치) 주문 조회 */
+  const fetchDaily = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
+
+      const res = await fetch('/api/admin/orders/dailyBatch', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          router.replace('/admin/login');
+          return;
+        }
+        console.error('dailyBatch failed', res.status, await res.text());
+        setErr('금일 주문 목록을 불러오지 못했습니다.');
+        return;
+      }
+
+      const json = await res.json();
+      const data: OrderResponse[] = (json?.data ?? json) as OrderResponse[];
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setErr('네트워크 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** 현재 모드에 맞춰 새로고침 */
+  const refresh = () => {
+    if (dailyMode) return fetchDaily();
+    return fetchOrders();
   };
 
   useEffect(() => {
@@ -121,11 +165,27 @@ export default function AdminOrderPage() {
 
   const collapseAll = () => setExpanded({});
 
+  /** 모드 전환 */
+  const switchToDaily = async () => {
+    if (!dailyMode) {
+      setExpanded({});
+      setDailyMode(true);
+      await fetchDaily();
+    }
+  };
+  const switchToAll = async () => {
+    if (dailyMode) {
+      setExpanded({});
+      setDailyMode(false);
+      await fetchOrders();
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-100">
       <div className="mx-auto max-w-6xl px-4 py-8">
         {/* 헤더: 제목 + 우측 액션(제품관리/로그아웃) */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-semibold">주문 관리</h1>
           <div className="flex items-center gap-2">
             <Link
@@ -143,7 +203,21 @@ export default function AdminOrderPage() {
           </div>
         </div>
 
-        {/* 검색 + (모두 펼치기/모두 접기/새로고침) 버튼 = 같은 줄 */}
+        {/* 모드 배지 */}
+        <div className="mb-4">
+          {dailyMode ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 text-amber-900 px-3 py-1 text-xs">
+              금일 주문 모드
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-full bg-gray-200 text-gray-700 px-3 py-1 text-xs">
+              전체 주문 모드
+            </span>
+          )}
+        </div>
+
+        {/* 검색 + 버튼들(모두 펼치기/모두 접기/새로고침/금일 주문/전체 주문) */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <input
             value={query}
@@ -165,10 +239,34 @@ export default function AdminOrderPage() {
               모두 접기
             </button>
             <button
-              onClick={fetchOrders}
+              onClick={refresh}
               className="rounded-md border bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               새로고침
+            </button>
+
+            {/* 모드 전환 버튼 */}
+            <button
+              onClick={switchToDaily}
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                dailyMode
+                  ? 'bg-gray-900 text-white'
+                  : 'border bg-white hover:bg-gray-50'
+              }`}
+              title="금일(일일 배송 대상) 주문만 보기"
+            >
+              금일 주문
+            </button>
+            <button
+              onClick={switchToAll}
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                !dailyMode
+                  ? 'bg-gray-900 text-white'
+                  : 'border bg-white hover:bg-gray-50'
+              }`}
+              title="전체 주문 보기"
+            >
+              전체 주문
             </button>
           </div>
         </div>
@@ -277,9 +375,7 @@ export default function AdminOrderPage() {
                                   </table>
                                 </div>
                               ) : (
-                                <div className="text-xs text-gray-500">
-                                  품목이 없습니다.
-                                </div>
+                                <div className="text-xs text-gray-500">품목이 없습니다.</div>
                               )}
                             </td>
                           </tr>
